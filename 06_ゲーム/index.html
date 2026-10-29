@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>時間のゲーム（仮）— コミュ</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/commu.css">
+</head>
+
+<body>
+
+  <!-- ================= コミュ（ADVパート） ================= -->
+  <div id="commuAdvModal" class="commu" onclick="commu.next()">
+
+    <!-- 背景（2枚を重ねて切り替え時にクロスフェード） -->
+    <div class="commu-bg-base" aria-hidden="true"></div>
+    <div id="commuBgA" class="commu-bg-layer" aria-hidden="true"></div>
+    <div id="commuBgB" class="commu-bg-layer" aria-hidden="true"></div>
+    <div class="commu-bg-veil" aria-hidden="true"></div>
+
+    <!-- 立ち絵（左・中央・右の3枠） -->
+    <div id="commuStage" class="commu-stage">
+      <div class="stage-slot" data-pos="left"></div>
+      <div class="stage-slot" data-pos="center"></div>
+      <div class="stage-slot" data-pos="right"></div>
+    </div>
+
+    <!-- 演出レイヤー -->
+    <div id="commuFlashLayer" class="commu-flash" aria-hidden="true"></div>
+    <div id="commuFxBadge" class="commu-fx-badge" aria-hidden="true"></div>
+
+    <!-- 1. 上部：章題・エピソードの時間線・時刻・操作 -->
+    <div class="commu-topbar" onclick="event.stopPropagation()">
+      <div class="episode-label">
+        <span id="commuEpisodeKicker" class="episode-kicker">EPISODE</span>
+        <span id="commuEpisodeTitle" class="episode-title">（エピソード名）</span>
+      </div>
+
+      <div class="episode-timeline" title="このエピソードのどこにいるか">
+        <div id="commuTimelineTrack" class="timeline-track">
+          <div id="commuTimelineFill" class="timeline-fill"></div>
+          <div id="commuTimelineTicks" class="timeline-ticks"></div>
+          <div id="commuTimelineNow" class="timeline-now"></div>
+        </div>
+      </div>
+
+      <div class="chrono-readout">
+        <svg class="chrono-dial" viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="20" r="17" class="dial-ring" />
+          <g class="dial-marks">
+            <line x1="20" y1="4" x2="20" y2="7" />
+            <line x1="36" y1="20" x2="33" y2="20" />
+            <line x1="20" y1="36" x2="20" y2="33" />
+            <line x1="4" y1="20" x2="7" y2="20" />
+          </g>
+          <line id="commuDialHand" x1="20" y1="20" x2="20" y2="8" class="dial-hand" />
+          <circle cx="20" cy="20" r="1.6" class="dial-pin" />
+        </svg>
+        <div class="chrono-text">
+          <span id="commuPlace" class="chrono-place">—</span>
+          <span id="commuTime" class="chrono-time">--:--:--</span>
+        </div>
+      </div>
+
+      <div class="commu-ctrls">
+        <button class="commu-ctrl-btn" onclick="commu.toggleHideUI()" title="ウィンドウを隠す [H]／右クリック">HIDE</button>
+        <button class="commu-ctrl-btn" onclick="commu.openBacklog()" title="会話ログ [L]／ホイール上">LOG</button>
+        <button id="commuAutoBtn" class="commu-ctrl-btn" onclick="commu.toggleAuto()" title="オート再生 [A]">AUTO</button>
+        <button class="commu-ctrl-btn" onclick="commu.askSkip()" title="スキップ（Ctrl長押しで早送り）">SKIP</button>
+        <button class="commu-ctrl-btn" onclick="commu.toggleConfig()" title="文字の速さ・オートの待ち時間">CONFIG</button>
+      </div>
+    </div>
+
+    <!-- 設定（文字速度・オート待ち） -->
+    <div id="commuConfig" class="commu-config hidden" onclick="event.stopPropagation()">
+      <div class="config-head">表示設定</div>
+      <label class="config-row">
+        <span>文字の速さ</span>
+        <input id="commuCfgSpeed" type="range" min="0" max="80" step="2" oninput="commu.setConfig('textSpeed', this.value)">
+        <span id="commuCfgSpeedVal" class="config-val"></span>
+      </label>
+      <label class="config-row">
+        <span>オートの待ち</span>
+        <input id="commuCfgAuto" type="range" min="0.4" max="2.5" step="0.1" oninput="commu.setConfig('autoWait', this.value)">
+        <span id="commuCfgAutoVal" class="config-val"></span>
+      </label>
+    </div>
+
+    <!-- 2. メッセージウィンドウ -->
+    <div class="commu-msg">
+      <!-- 選択肢：分岐点 -->
+      <div id="commuChoicesBox" class="commu-choices hidden" onclick="event.stopPropagation()">
+        <div class="choices-head">
+          <span class="choices-title"><span class="choices-node"></span>分岐点</span>
+          <span class="choices-sub">どの時間線を進むかを選ぶ</span>
+        </div>
+        <div id="commuChoicesContainer" class="choices-list"></div>
+      </div>
+
+      <!-- 話者の名札 -->
+      <div id="commuNamePlate" class="commu-name-plate hidden">
+        <span class="plate-bar"></span>
+        <span id="commuPlateName" class="plate-name"></span>
+        <span id="commuPlateTag" class="plate-tag"></span>
+      </div>
+
+      <!-- 本文 -->
+      <div id="commuDialogueWindow" class="commu-window">
+        <span class="window-ruler" aria-hidden="true"></span>
+        <span id="commuWindowSweep" class="window-sweep" aria-hidden="true"></span>
+        <p id="commuDialogueText" class="commu-text"></p>
+        <span id="commuNextCaret" class="commu-caret hidden" aria-hidden="true"><span></span></span>
+      </div>
+    </div>
+
+    <!-- UI非表示時の復帰ヒント -->
+    <div class="commu-hidden-hint">クリックまたは <kbd>H</kbd> でウィンドウを表示</div>
+
+    <!-- 幕開け（エピソードの扉） -->
+    <div id="commuIntro" class="commu-intro hidden">
+      <span id="commuIntroKicker" class="intro-kicker"></span>
+      <span class="intro-line"></span>
+      <span id="commuIntroTitle" class="intro-title"></span>
+      <span id="commuIntroTime" class="intro-time"></span>
+    </div>
+
+    <!-- 幕引き -->
+    <div id="commuEnd" class="commu-end hidden" onclick="event.stopPropagation()">
+      <span class="intro-kicker">END OF RECORD</span>
+      <span class="intro-line"></span>
+      <span class="end-title">このエピソードは終わりました</span>
+      <button class="commu-ctrl-btn end-btn" onclick="commu.replay()">もう一度再生</button>
+    </div>
+
+    <!-- スキップの確認 -->
+    <div id="commuConfirm" class="commu-dialog-backdrop hidden" onclick="event.stopPropagation()">
+      <div class="commu-dialog">
+        <p class="dialog-text">このエピソードをスキップしますか？</p>
+        <div class="dialog-btns">
+          <button class="commu-ctrl-btn" onclick="commu.closeConfirm()">やめる</button>
+          <button class="commu-ctrl-btn is-primary" onclick="commu.skip()">スキップ</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 会話ログ：時間の記録 -->
+  <div id="commuBacklogModal" class="commu-backlog hidden" onclick="commu.closeBacklog()">
+    <div class="backlog-panel" onclick="event.stopPropagation()">
+      <div class="backlog-head">
+        <div>
+          <h2 class="backlog-title">会話の記録</h2>
+          <p class="backlog-sub">これまでに流れた時間</p>
+        </div>
+        <button class="commu-ctrl-btn" onclick="commu.closeBacklog()" title="閉じる [Esc]">CLOSE</button>
+      </div>
+      <div id="commuBacklogList" class="backlog-list"></div>
+    </div>
+  </div>
+
+  <script src="js/data/characters.js"></script>
+  <script src="js/data/episodes.js"></script>
+  <script src="js/commu.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => commu.start(SAMPLE_EPISODE));
+  </script>
+</body>
+
+</html>
